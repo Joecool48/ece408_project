@@ -4,16 +4,18 @@
 
 #include <mxnet/base.h>
 #define BLOCK_WIDTH 16
-
+#define K_SIZE
 
 namespace mxnet
 {
 namespace op
 {
+__constant__ float k_const[8*1024];
 
 __global__ void forward_kernel(float *y, const float *x, const float *k, const int B, const int M, const int C, const int H, const int W, const int K)
 {
     int n, m, c, h, w, p, q;
+
     /*
     Modify this function to implement the forward pass described in Chapter 16.
     We have added an additional dimension to the tensors to support an entire mini-batch
@@ -29,7 +31,7 @@ __global__ void forward_kernel(float *y, const float *x, const float *k, const i
     //helps us index the pointers
     #define y4d(i3, i2, i1, i0) y[(i3) * (M * H_out * W_out) + (i2) * (H_out * W_out) + (i1) * (W_out) + i0]
     #define x4d(i3, i2, i1, i0) x[(i3) * (C * H * W) + (i2) * (H * W) + (i1) * (W) + i0]
-    #define k4d(i3, i2, i1, i0) k[(i3) * (C * K * K) + (i2) * (K * K) + (i1) * (K) + i0]
+    #define k4d(i3, i2, i1, i0) k_const[(i3) * (C * K * K) + (i2) * (K * K) + (i1) * (K) + i0]
 
     n = blockIdx.x; //idx of images
     m = blockIdx.y; //idc of features
@@ -47,6 +49,7 @@ __global__ void forward_kernel(float *y, const float *x, const float *k, const i
         for (p = 0; p < K; p++){ //height idx of filter
             for (q = 0; q < K; q++) { //width idx of filter
                 accumulation += x4d(n,c,h+p, w+q) * k4d(m,c,p,q);
+                // accumulation += x4d(n,c,h+p, w+q) * k_const[];
             }
         }
     }
@@ -101,8 +104,13 @@ void forward<gpu, float>(mshadow::Tensor<gpu, 4, float> &y, const mshadow::Tenso
     dim3 blockDim(BLOCK_WIDTH, BLOCK_WIDTH, 1);
     dim3 gridDim(B, M, Z); //num of output images, number of output feature maps, total tiles
 
+    //device to device const memcpy
+    cudaMemcpyToSymbol(k_const, w.dptr_, M * C * K * K * sizeof(float), 0, cudaMemcpyDeviceToDevice);
+
     // Call the kernel
     forward_kernel<<<gridDim, blockDim>>>(y.dptr_,x.dptr_,w.dptr_, B,M,C,H,W,K);
+
+
 
     // Use MSHADOW_CUDA_CALL to check for CUDA runtime errors.
     MSHADOW_CUDA_CALL(cudaDeviceSynchronize());
