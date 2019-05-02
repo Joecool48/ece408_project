@@ -13,34 +13,32 @@ namespace op
 __global__ void matrixMultiplyShared(float *A, float *B, float *C, int numAColumns, int numCRows, int numCColumns)
 {
 
-  //@@ Insert code to implement matrix multiplication here
-  //@@ You have to use shared memory for this MP
   __shared__ float tileA[TILE_WIDTH][TILE_WIDTH];
   __shared__ float tileB[TILE_WIDTH][TILE_WIDTH];
-  int rowIdx = blockIdx.y * blockDim.y + threadIdx.y;
-  int colIdx = blockIdx.x * blockDim.x + threadIdx.x;
+  int rowIdx = blockIdx.y * blockDim.y + tIdx.y;
+  int colIdx = blockIdx.x * blockDim.x + tIdx.x;
 
   float Pvalue = 0;
 
   //populate shared memory
   for (int tileIdx = 0; tileIdx < ceil(float(numAColumns)/TILE_WIDTH); tileIdx++) {
 
-    int col = tileIdx*TILE_WIDTH+threadIdx.x;
+    int col = tileIdx*TILE_WIDTH+tIdx.x;
     if (col < numAColumns)
-      tileA[threadIdx.y][threadIdx.x] = A[rowIdx*numAColumns+col];
+      tileA[tIdx.y][tIdx.x] = A[rowIdx*numAColumns+col];
     else
-      tileA[threadIdx.y][threadIdx.x] = 0;
+      tileA[tIdx.y][tIdx.x] = 0;
 
-    int row = tileIdx*TILE_WIDTH+threadIdx.y;
+    int row = tileIdx*TILE_WIDTH+tIdx.y;
     if (row < numAColumns)
-      tileB[threadIdx.y][threadIdx.x] = B[row*numCColumns + colIdx];
+      tileB[tIdx.y][tIdx.x] = B[row*numCColumns + colIdx];
     else
-      tileB[threadIdx.y][threadIdx.x] = 0;
+      tileB[tIdx.y][tIdx.x] = 0;
 
 
     __syncthreads();
     for (int k = 0; k < TILE_WIDTH; k++)
-       Pvalue += tileA[threadIdx.y][k]*tileB[k][threadIdx.x];
+       Pvalue += tileA[tIdx.y][k]*tileB[k][tIdx.x];
 
     __syncthreads();
   }
@@ -53,7 +51,7 @@ __global__ void matrixMultiplyShared(float *A, float *B, float *C, int numAColum
 
 //implement unrollKernel according to textbook algorithm
 __global__ void unrollKernel(float* X_unrolled, int size, float* X, int C, int K, int H, int W) {
-    int tIdx = blockDim.x*blockIdx.x + threadIdx.x;
+    int tIdx = blockDim.x*blockIdx.x + tIdx.x;
     if (tIdx < size){
         int H_out = H - K + 1;
         int W_out = W - K + 1;
